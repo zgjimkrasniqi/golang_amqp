@@ -1,0 +1,159 @@
+Golang
+
+So, why Golang? Why not Java or Python? Java has a much larger user base and Python is a much simpler language to write.
+So why choose Golang? Well. Golang is a modern language, which has great support for modern software architecture.
+Golang is a very small language, it's compiled (not transpiled and not run by the JVM) so,
+building Docker containers with Golang is a match made in heaven. Small Docker images, with performance similar to languages like C.
+So, this also makes Golang a great language for writing microservices... And, you can't say microservices without saying
+event-driven architecture!
+So, let's write a simple Golang program, to exemplify using Golang with RabbitMQ to support and event driven architecture.
+
+There are many other fantastic features of Golang, but I won't go too much into detail. If you are interested,
+I would recommend watching this short interview with Nic Jackson from Hashicorp: https://www.youtube.com/watch?v=qlwp0mHFLHU
+
+
+---
+Event-Driven Architecture
+
+Event Driven Architecture has been popular long before Microservices, but now that Microservices are all the talk, so is EDA.
+Essentially, EDA is a pattern for communication of state. It's been immensely popular in the financial industry for decades,
+as the pattern is particularly suited for handling transaction state. The reason why it has become so attached to the
+conversation of Microservices, is that in Microservice Architecture, you want everything to be loosely coupled.
+Essentially, you don't want one service to be attached to another. You want to avoid situations in which you change something
+in one service and then must make a corresponding change to one or all other services.
+
+Let's think of an HTTP service, in which we are communicating with one or more services. Who decides who receives data?
+It's the HTTP service, which directly calls each and every one of those services. So... what happens if we create a
+new service that also needs this data? We would have to ask whoever is maintaining the HTTP service, if they could make sure,
+that our service also could receive this data.
+
+However, in an EDA, we don't need to contact the HTTP service owners at all. An EDA typically works in a publish/subscribe pattern.
+Simply explained, a publisher sends a message to a message broker, who will appropriately deliver the messages to all
+services who are subscribed. So, if we need to create a new service, we simply tell the message broker that we are
+subscribing to these messages/events.
+
+---
+Asynchronous Messaging Queue Protocol
+
+The Asynchronous Messaging Queue Protocol started development in 2003, initiated by JPMorgan Chase. The project soon
+caught on and became a open-source project involving some of the largest banks and technology companies (Bank of America,
+Barclays, Microsoft, Cisco etc.) Essentially, the project was meant to create an open standard, to improve transactions,
+with a focus on the financial industry. Therefore, there was a huge backing by the banking industry to develop AMQP,
+making it extremely efficient and reliable. AMQP relies on messaging queues to handle communication, in a so called
+publish/subscribe architecture. The most common pattern of implementing this, the pattern this tutorial will be looking at,
+is the topic exchange. Essentially, a publisher sends a message to an exchange which will distribute messages to queues,
+based on a topic. The subscriber(s) will define a queue and tell the exchange which topics they are interested in.
+
+As an example:
+If we, as a subscriber define a queue in which we define to be interested in all messages with the topic apple,
+if a publisher sends a message with apple we will receive that message. Even further, we can define that we are interested
+in sub topics, which is a typical implementation for logging. So, as an example, I might have a subscriber who is listening
+for log.ERROR and log.CRITICAL, but have another subscriber who is interested in all log log.*. In other words,
+it's possible to listen based on binding keys (which work like search filters). This is super neat and something that we
+will explore further in this tutorial, using RabbitMQ, which implements AMQP.
+
+So, AMQP seems rather simple, right? It is, and that is why it's so great. We define a publisher who sends a message with
+a specified topic to an exchange. The exchange will determine whom to send these message to, based on subscribers topic binding keys.
+
+
+---
+Spinning up RabbitMQ
+
+docker run --detach --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+
+We are running a docker image, running the container in --detach mode (as a background process) naming it rabbitmq and
+exposing ports 5672 and 15672. Finally, we specify the image that we want to pull and eventually run: rabbitmq:3-management.
+Once the docker container has started, you can open a browser and visit http://localhost:15672 to see the management interface.
+We won't be using the management interface, but it's a good way to confirm that everything is working as intended.
+
+---
+
+We will be creating a consumer service, which will subscribe to our topics and we will define a sender service,
+which will publish random events to the exchange. Our lib folder, will hold some common configurations for both our
+consumer and sender. Before we begin, you will have to get the dependency for amqp:
+
+go get github.com/streadway/amqp
+
+---
+
+event/event.go
+
+In this file, we are defining three static methods. The getExchangeName function simply returns the name of our exchange.
+It isn't necessary, but nice for this tutorial, to make it simple to change your topic name. More interesting is the
+declareRandomQueue function. This function will create a nameless queue, which RabbitMQ will assign a random name,
+we don't want to worry about this and that is why we are letting RabbitMQ worry about it. The queue is also defined as
+exclusive, which means that when defined only one subscriber can be subscribed to this queue. The last function that we
+have declared is declareExchange which will declare an exchange, as the name suggests. This function is idempotent,
+so if the exchange already exists, no worries, it won't create duplicates. However, if we were to change the type of the
+Exchange (to direct or fan out), then we would have to either delete the old exchange or find a new name, as you cannot
+overwrite exchanges. The topic type is what enables us to publish an event with a topic such as log.WARN, which the
+subscribers can specify in their binding keys.
+
+---
+
+event/emitter.go
+
+At the very top of our code, we are defining our Emitter struct (a class), which contains an amqp.Connection.
+
+setup - Makes sure that the exchange that we are sending messages to actually exists. We do this by retreiving a
+channel from our connection pool and calling the idempotent declareExchange function from our event.go file.
+
+Push - Sends a message to our exchange. First we get a new channel from our connection pool and if we receive no errors
+when doing so, we publish our message. The function takes two input parameters event and severity; event is the message
+to be sent and severity is our logging serverity, which will define which messages are received by which subscribers,
+based on their binding keys.
+
+NewEventEmitter - Will return a new Emitter, or an error, making sure that the connection is established to our AMQP server.
+
+---
+
+event/consumer.go
+
+At the very top we define that our Consumer struct defines a connection to our AMQP server and a queueName. The queue name will store the randomly generated name of our declared nameless queue. We will use this for telling RabbitMQ that we want to bind/listen to this particular queue for messages.
+
+setup() - We ensure that the exchange is declared, just like we do in our Emitter struct.
+
+NewConsumer() - We return a new Consumer or an error, ensuring that everything went well connecting to our AMQP server.
+
+Listen - We get a new channel from our connection pool. We declare our nameless queue and then we iterate over our input
+topics, which is just an array of strings, specifying our binding keys. For each string in topics, we will bind our queue
+to the exchange, specifying our binding key, for which messages we want to receive. As an example, this could be log.WARN
+and log.ERROR. Lastly, we will invoke the Consume function (to start listening on the queue) and define that we will
+iterate over all messages received from the queue and print out these message to the console.
+
+The forever channel is a simple way of ensuring a program will run forever. Essentially, we are defining a channel,
+which we will wait for until it receives input.
+
+
+---
+
+consumer/main.go
+
+As can be seen this is a really simple program which creates a connection to our docker instance of RabbitMQ,
+passes this connection to our NewConsumer function and then calls the Listen method, passing all the input arguments
+from the command line. Once we have written this code we can open up a few terminals to start up a few consumers:
+
+#t1> go run consumer.go log.WARN log.ERROR
+#t2> go run consumer.go log.*
+
+The first terminal in which we are running our consumer.go file, we are listening for all log.WARN and log.ERROR events.
+In the second terminal we are listening for all events. It is also possible to do a lot of other search filters with
+binding keys. There are only two different kind of binding keys * and #:
+
+* substitutes exactly one word. So our binding key could be: apples.*.orangeand we would receive apples.dingdong.orange.
+Similarly, we would receive log.WARN if our binding was log.*,
+but we wouldn't receive log.WARN.joke #: substitutes zero or more words.
+So if we use the same example as above: If our binding is log.# we will receive log.WARN.joke as well as receiving log.WARN.
+
+----
+
+sender/main.go
+
+Again, a very simply little service. Connection to AMQP, create a new Event Emitter and then iterate to publish
+10 messages to the exchange, using the console input as severity level.
+The Push function being input (message: "i - input", severity: input). Simples. So, run this a few times and see what happens:
+
+#t3> go run sender.go log.WARN
+#t3> go run sender.go log.ERROR
+#t3> go run sender.go log.INFO
+
