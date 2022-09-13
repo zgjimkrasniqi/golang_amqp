@@ -133,8 +133,8 @@ As can be seen this is a really simple program which creates a connection to our
 passes this connection to our NewConsumer function and then calls the Listen method, passing all the input arguments
 from the command line. Once we have written this code we can open up a few terminals to start up a few consumers:
 
-#t1> go run consumer.go log.WARN log.ERROR
-#t2> go run consumer.go log.*
+#t1> go run main.go log.WARN log.ERROR
+#t2> go run main.go log.*
 
 The first terminal in which we are running our consumer.go file, we are listening for all log.WARN and log.ERROR events.
 In the second terminal we are listening for all events. It is also possible to do a lot of other search filters with
@@ -153,7 +153,7 @@ Again, a very simply little service. Connection to AMQP, create a new Event Emit
 10 messages to the exchange, using the console input as severity level.
 The Push function being input (message: "i - input", severity: input). Simples. So, run this a few times and see what happens:
 
-#t3> go run sender.go log.WARN
-#t3> go run sender.go log.ERROR
-#t3> go run sender.go log.INFO
+#t3> go run main.go log.WARN
+#t3> go run main.go log.ERROR
+#t3> go run main.go log.INFO
 

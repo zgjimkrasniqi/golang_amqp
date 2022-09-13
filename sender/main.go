@@ -23,8 +23,8 @@ func main() {
 	}
 
 	/*
-		#t3> go run sender.go log.WARN
-		#t3> go run sender.go log.ERROR
-		#t3> go run sender.go log.INFO
+		#t3> go run main.go log.WARN
+		#t3> go run main.go log.ERROR
+		#t3> go run main.go log.INFO
 	*/
 }

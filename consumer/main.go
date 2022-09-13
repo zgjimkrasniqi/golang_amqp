@@ -21,7 +21,7 @@ func main() {
 	consumer.Listen(os.Args[1:])
 
 	/*
-		#t1> go run consumer.go log.WARN log.ERROR
-		#t2> go run consumer.go log.*
+		#t1> go run main.go log.WARN log.ERROR
+		#t2> go run main.go log.*
 	*/
 }
